@@ -1,0 +1,63 @@
+
+name: Build LocalGroove APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'LocalGroove-Android-source.zip'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get source files
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install Gradle
+        run: |
+          curl -L --fail --retry 3 \
+            https://services.gradle.org/distributions/gradle-8.9-bin.zip \
+            -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          echo "/tmp/gradle-8.9/bin" >> "$GITHUB_PATH"
+
+      - name: Extract project
+        run: |
+          unzip -q LocalGroove-Android-source.zip -d source
+          PROJECT_DIR="$(dirname "$(find source -name settings.gradle.kts -print -quit)")"
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "Android project files were not found."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Build debug APK
+        run: gradle -p "$PROJECT_DIR" assembleDebug --no-daemon
+
+      - name: Save APK for download
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalGroove-debug-APK
+          path: source/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          
